@@ -1,3 +1,4 @@
+import numpy as np
 from datasets import load_metric
 
 def compute_metrics(eval_pred):

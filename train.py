@@ -1,5 +1,4 @@
 import wandb
-import numpy as np
 
 from metrics import compute_metrics
 
