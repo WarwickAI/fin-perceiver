@@ -14,11 +14,11 @@ eval/recall    0.8502
 
 TBD: 10-fold cross validation
 
-# Installation
+## Installation
 Create W&B API token, W&B/HF CLI login, ....
 
-# Training
+## Training
 `WANDB_PROJECT=fin_perceiver python train.py`
 
-# Datasets
+## Datasets
 This model was trained on the Financial PhraseBank (>= 50% agreement) from [Malo et al. (2014)](https://www.researchgate.net/publication/251231107_Good_Debt_or_Bad_Debt_Detecting_Semantic_Orientations_in_Economic_Texts)
