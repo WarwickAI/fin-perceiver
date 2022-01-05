@@ -1,14 +1,15 @@
 import wandb
 
-from metrics import compute_metrics
-
+from datasets import load_dataset
 from transformers import PerceiverTokenizer, PerceiverForSequenceClassification, \
     Trainer, TrainingArguments
+
+from metrics import compute_metrics
 
 train_dataset, eval_dataset = load_dataset(
     path='financial_phrasebank',
     name='sentences_50agree',
-    split=['train[:80%]', 'train[80%:100%]'])
+    split=['train[:70%]', 'train[70%:100%]'])
 
 tokenizer = PerceiverTokenizer.from_pretrained('deepmind/language-perceiver')
 
@@ -32,12 +33,11 @@ model = PerceiverForSequenceClassification.from_pretrained(
 )
 
 training_args = TrainingArguments(
-    per_device_train_batch_size=16,
-    per_device_eval_batch_size=16,
-    num_train_epochs=5,
-    learning_rate=3.45e-6,
-    evaluation_strategy='steps',
-    eval_steps=100,
+    per_device_train_batch_size=8,
+    per_device_eval_batch_size=8,
+    num_train_epochs=4,
+    learning_rate=2e-5,
+    evaluation_strategy='epoch',
     save_strategy='epoch',
     save_total_limit=2,
     output_dir='fin-perceiver',
