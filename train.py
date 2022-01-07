@@ -2,58 +2,99 @@ import wandb
 
 from datasets import load_dataset
 from transformers import PerceiverTokenizer, PerceiverForSequenceClassification, \
-    Trainer, TrainingArguments
+    Trainer, TrainingArguments, DataCollatorWithPadding
 
 from metrics import compute_metrics
+from dataset import k_fold_split
 
-train_dataset, eval_dataset = load_dataset(
-    path='financial_phrasebank',
-    name='sentences_50agree',
-    split=['train[:70%]', 'train[70%:100%]'])
+def train_folds(dataset, n_folds=10):
+    tokenizer = PerceiverTokenizer.from_pretrained('deepmind/language-perceiver')
+    data_collator = DataCollatorWithPadding(tokenizer=tokenizer, padding='max_length')
 
-tokenizer = PerceiverTokenizer.from_pretrained('deepmind/language-perceiver')
+    labels = dataset.features['label'].names
+    id2label = { id: label for id, label in enumerate(labels) }
+    label2id = { label: id for id, label in enumerate(labels) }
 
-def tokenize_function(examples):
-    return tokenizer(examples['sentence'], padding='max_length', truncation=True)
+    tokenized_dataset = dataset.map(
+        lambda examples: tokenizer(
+            examples['sentence'],
+            truncation=True
+        ),
+        batched=True
+    )
 
-train_dataset = train_dataset.map(tokenize_function, batched=True)
-eval_dataset = eval_dataset.map(tokenize_function, batched=True)
+    dataset_splits = k_fold_split(
+        dataset=tokenized_dataset,
+        n_splits=10,
+        shuffle=True
+    )
 
-labels = train_dataset.features['label'].names
-id2label = { id: label for id, label in enumerate(labels) }
-label2id = { label: id for id, label in enumerate(labels) }
+    default_training_args = {
+        'per_device_train_batch_size': 16,
+        'per_device_eval_batch_size': 16,
+        'num_train_epochs': 4,
+        'learning_rate': 2e-5,
+        'evaluation_strategy': 'epoch',
+        'save_strategy': 'epoch',
+        'save_total_limit': 2,
+        'logging_strategy': 'steps',
+        'logging_first_step': True,
+        'logging_steps': 5,
+        'report_to': 'wandb'
+    }
 
-wandb.login()
+    for current_fold, fold_data in enumerate(dataset_splits):
+        print(f'Starting fold {current_fold}')
 
-model = PerceiverForSequenceClassification.from_pretrained(
-    'deepmind/language-perceiver',
-    num_labels=3,
-    id2label=id2label,
-    label2id=label2id
-)
+        train, eval = fold_data
 
-training_args = TrainingArguments(
-    per_device_train_batch_size=8,
-    per_device_eval_batch_size=8,
-    num_train_epochs=4,
-    learning_rate=2e-5,
-    evaluation_strategy='epoch',
-    save_strategy='epoch',
-    save_total_limit=2,
-    output_dir='fin-perceiver',
-    logging_strategy='steps',
-    logging_first_step=True,
-    logging_steps=5,
-    report_to='wandb'
-)
+        model = PerceiverForSequenceClassification.from_pretrained(
+            'deepmind/language-perceiver',
+            num_labels=len(labels),
+            id2label=id2label,
+            label2id=label2id
+        )
 
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=train_dataset,
-    eval_dataset=eval_dataset,
-    compute_metrics=compute_metrics
-)
+        trainer = train_model(
+            output_dir=f'fold_{current_fold}',
+            model=model,
+            tokenizer=tokenizer,
+            data_collator=data_collator,
+            training_args=default_training_args,
+            train=train,
+            eval=eval
+        )
 
-trainer.train()
-wandb.finish()
+        print(f'Finished training fold {current_fold}')
+
+def train_model(model, output_dir, tokenizer, data_collator, training_args, train, eval):
+    training_args = TrainingArguments(
+        output_dir=output_dir,
+        **training_args
+    )
+
+    trainer = Trainer(
+        model=model,
+        tokenizer=tokenizer,
+        args=training_args,
+        train_dataset=train,
+        eval_dataset=eval,
+        data_collator=data_collator,
+        compute_metrics=compute_metrics
+    )
+
+    trainer.train()
+    wandb.finish()
+
+    return trainer
+
+if __name__ == '__main__':
+    wandb.login()
+
+    financial_phrasebank = load_dataset(
+        path='financial_phrasebank',
+        name='sentences_50agree',
+        split='train'
+    )
+
+    train_folds(financial_phrasebank, n_folds=10)
